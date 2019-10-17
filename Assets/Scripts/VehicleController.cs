@@ -17,12 +17,19 @@ public class VehicleController : MonoBehaviour
     public float rpmAccelerationMultiplier;
     public float rpmDecelerateMultiplier = 1000;
     public float maxRpm = 7000;
+    public float minimumRpm = 200;
     public float maxRpmAccelerationMultiplier = 163;
     public float oneToOneRpmAccelerationMultiplier;
     public float idleRpm = 750;
 
     public bool engineOn = true;
     public bool isThrottling = false;
+
+    [Header("Clutch Vars")]
+    public float clutchValue; // 0.0f to 1.0f
+    public float minimumClutchValue = 0.2f; // The minimum value that the clutchValue can be without killing the car
+
+    public float pullPositionValue; // 0.0f to 1.0f
 
     [Header("Gear Vars")]
     public int amountOfGears; // With reverse || 0 = reverse | 1 = gear 1 | 2 = gear 2...
@@ -61,6 +68,16 @@ public class VehicleController : MonoBehaviour
         
         float angle = maxAngle * Input.GetAxis("Horizontal");
 
+        if (Input.GetKey(KeyCode.I) && engineOn == false && whichGear == 0)
+        {
+            engineOn = true;
+            rpm = idleRpm + 100;
+        }
+        else if (whichGear != 0)
+        {
+
+        }
+
         if (Input.GetKey(KeyCode.W) && engineOn == true)
         {
             isThrottling = true;
@@ -87,15 +104,22 @@ public class VehicleController : MonoBehaviour
             {
                 rpm = rpm - rpmDecelerateMultiplier * Time.deltaTime;
             }
-            else
-            {
-                rpm = idleRpm;
-            }
         }
         else
         {
             isThrottling = false;
         }
+
+        if (Input.GetKey(KeyCode.C))
+        {
+            clutchValue = 1;
+        }
+        else
+        {
+            clutchValue = 0;
+        }
+
+        checkClutchValues();
 
         if (Input.GetKey(KeyCode.S))
         {
@@ -147,7 +171,7 @@ public class VehicleController : MonoBehaviour
                     wheelCol.brakeTorque = 0;
                 }
 
-                if (kmh < currentMaxSpeed)
+                if (kmh < currentMaxSpeed && clutchValue < minimumClutchValue)
                 {
                     if (whichGear == -1)
                     {
@@ -185,6 +209,27 @@ public class VehicleController : MonoBehaviour
                 currentMaxSpeed = oneToOneRatioMaxSpeed / gearRatio[whichGear];
                 motorBrakeTorque = minimumMotorBrakeTorque * gearRatio[whichGear];
                 break;
+        }
+    }
+
+    public void checkClutchValues()
+    {
+        if (whichGear != 0 && engineOn == true) // If the engine is on and the current gear is not neutral
+        {
+            if (clutchValue < minimumClutchValue && rpm < idleRpm) // If the clutchValue is less than minimumClutchValue and the rpm is to low...
+            {
+                rpm = rpm - rpmDecelerateMultiplier * Time.deltaTime;    // then decrease the rpm even more...
+            }
+            else if (clutchValue >= minimumClutchValue && rpm < idleRpm && rpm > minimumRpm)
+            {
+                rpm = idleRpm;
+            }
+
+            if (rpm < minimumRpm)
+            {
+                engineOn = false;
+                rpm = 0;
+            }
         }
     }
 }
