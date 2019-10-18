@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class VehicleController : MonoBehaviour
 {
-    
+    SteeringWheelController steeringWheelController;
 
     Rigidbody rb;
 
@@ -23,11 +23,12 @@ public class VehicleController : MonoBehaviour
     public float idleRpm = 750;
 
     public bool engineOn = true;
-    public bool isThrottling = false;
+    public float throttleValue;
+    public float throttleDeadzone = 0.1f;
 
     [Header("Clutch Vars")]
     public float clutchValue; // 0.0f to 1.0f
-    public float minimumClutchValue = 0.2f; // The minimum value that the clutchValue can be without killing the car
+    public float clutchDeadzone = 0.1f; // The minimum value that the clutchValue can be without killing the car
 
     public float pullPositionValue; // 0.0f to 1.0f
 
@@ -44,7 +45,8 @@ public class VehicleController : MonoBehaviour
 
     public float brakeTorque = 8000;
     public float handbrakeTorque = 16_000;
-    public bool isBraking = false;
+    public float brakeValue;
+    public float brakeDeadzone = 0.1f;
     public bool handbrakeOn = false;
 
     [Header("Wheels Vars")]
@@ -56,6 +58,8 @@ public class VehicleController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
 
+        steeringWheelController = GetComponentInParent<SteeringWheelController>();
+
         wheelColsParent = GameObject.Find("WheelCols");
         wheelCols = wheelColsParent.GetComponentsInChildren<WheelCollider>();
 
@@ -66,68 +70,74 @@ public class VehicleController : MonoBehaviour
     {
         kmh = rb.velocity.magnitude / 1000 * 2 * 60 * 60;
         
-        float angle = maxAngle * Input.GetAxis("Horizontal");
+        // Check Inputs
+        float angle = maxAngle * Input.GetAxis("Horizontal"); // Check steering value from steering wheel and keyboard
+
+        float throttle = Input.GetAxis("Throttle") + 0.5f; // Check throttle value from steering wheel and keyboard
+        if (Input.GetKey(KeyCode.W))
+        {
+            throttleValue = 1;
+        } else
+        {
+            throttleValue = throttle;
+        }
+
+        float clutch = Input.GetAxis("Clutch") + 0.5f; // Check clutch value from steering wheel and keyboard
+        if (Input.GetKey(KeyCode.C))
+        {
+            clutchValue = 1;
+        } else
+        {
+            clutchValue = clutch;
+        }
+
+        float brake = Input.GetAxis("Brake") + 0.5f; // Check brake value from steering wheel and keyboard
+        if (Input.GetKey(KeyCode.S))
+        {
+            brakeValue = 1;
+        } else
+        {
+            brakeValue = brake;
+        }
+
 
         if (Input.GetKey(KeyCode.I) && engineOn == false && whichGear == 0)
         {
             engineOn = true;
             rpm = idleRpm + 100;
         }
-        else if (whichGear != 0)
+        else if (Input.GetKey(KeyCode.I) && engineOn == false && whichGear != 0)
         {
-
+            Debug.Log("Try starting the engine with neutral gear!");
         }
 
-        if (Input.GetKey(KeyCode.W) && engineOn == true)
+        if (throttleValue > throttleDeadzone && engineOn == true)
         {
-            isThrottling = true;
             if (rpm < maxRpm)
             {
                 switch (whichGear)
                 {
                     case -1: // If reverse
-                        rpm = rpm + rpmAccelerationMultiplier * gearRatio[0] * Time.deltaTime;
+                        rpm = rpm + rpmAccelerationMultiplier * gearRatio[0] * throttleValue * 10 * Time.deltaTime;
                         break;
                     case 0: // If neutral
-                        rpm = rpm + maxRpmAccelerationMultiplier * Time.deltaTime;
+                        rpm = rpm + maxRpmAccelerationMultiplier * throttleValue * 10 * Time.deltaTime;
                         break;
                     default: // If gear is from 1 to highest gear
-                        rpm = rpm + rpmAccelerationMultiplier * gearRatio[whichGear] * Time.deltaTime;
+                        rpm = rpm + rpmAccelerationMultiplier * gearRatio[whichGear] * throttleValue * 10 * Time.deltaTime;
                         break;
                 }
             }
         }
         else if (engineOn == true)
         {
-            isThrottling = false;
             if (rpm > idleRpm)
             {
                 rpm = rpm - rpmDecelerateMultiplier * Time.deltaTime;
             }
         }
-        else
-        {
-            isThrottling = false;
-        }
-
-        if (Input.GetKey(KeyCode.C))
-        {
-            clutchValue = 1;
-        }
-        else
-        {
-            clutchValue = 0;
-        }
 
         checkClutchValues();
-
-        if (Input.GetKey(KeyCode.S))
-        {
-            isBraking = true;
-        } else
-        {
-            isBraking = false;
-        } // Check if player wants to brake. If so, then brake...
 
         if (Input.GetKeyDown(KeyCode.G) && whichGear < amountOfGears)
         {
@@ -150,11 +160,11 @@ public class VehicleController : MonoBehaviour
             // Checks if backwheel. If then put handBrake value on wheel.brakeTorque and wheel.motorTorque to torque
             if (wheelCol.transform.localPosition.z < 0)
             {
-                if (isBraking == true && handbrakeOn == true) // If footBrake and handbrake is activated, then add up their torques
+                if (brakeValue > brakeDeadzone && handbrakeOn == true) // If footBrake and handbrake is activated, then add up their torques
                 {
                     wheelCol.brakeTorque = brakeTorque + handbrakeTorque;
                 }
-                else if (isBraking == true)
+                else if (brakeValue > brakeDeadzone)
                 {
                     wheelCol.brakeTorque = brakeTorque;
                 }
@@ -162,7 +172,7 @@ public class VehicleController : MonoBehaviour
                 {
                     wheelCol.brakeTorque = handbrakeTorque;
                 }
-                else if (isThrottling == false)
+                else if (throttleValue < throttleDeadzone)
                 {
                     wheelCol.brakeTorque = motorBrakeTorque;
                 }
@@ -171,7 +181,7 @@ public class VehicleController : MonoBehaviour
                     wheelCol.brakeTorque = 0;
                 }
 
-                if (kmh < currentMaxSpeed && clutchValue < minimumClutchValue)
+                if (kmh < currentMaxSpeed && clutchValue < clutchDeadzone)
                 {
                     if (whichGear == -1)
                     {
@@ -216,11 +226,11 @@ public class VehicleController : MonoBehaviour
     {
         if (whichGear != 0 && engineOn == true) // If the engine is on and the current gear is not neutral
         {
-            if (clutchValue < minimumClutchValue && rpm < idleRpm) // If the clutchValue is less than minimumClutchValue and the rpm is to low...
+            if (clutchValue < clutchDeadzone && rpm < idleRpm) // If the clutchValue is less than minimumClutchValue and the rpm is to low...
             {
                 rpm = rpm - rpmDecelerateMultiplier * Time.deltaTime;    // then decrease the rpm even more...
             }
-            else if (clutchValue >= minimumClutchValue && rpm < idleRpm && rpm > minimumRpm)
+            else if (clutchValue >= clutchDeadzone && rpm < idleRpm && rpm > minimumRpm)
             {
                 rpm = idleRpm;
             }
